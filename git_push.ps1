@@ -4,21 +4,40 @@
 .DESCRIPTION
     自动检测是否为首次设置，执行相应的初始化或更新操作
     支持交互式输入提交信息和选择推送分支
+    增加了超时处理机制，避免远程分支查询卡死
 #>
 
 # 函数：检测是否为Git仓库
 function Test-GitRepository {
+    <#
+    .SYNOPSIS
+        检测当前目录是否为Git仓库
+    .DESCRIPTION
+        通过检查.git目录是否存在来判断
+    #>
     return Test-Path ".git"
 }
 
 # 函数：检测是否已配置远程仓库
 function Test-RemoteOrigin {
+    <#
+    .SYNOPSIS
+        检测是否已配置origin远程仓库
+    .DESCRIPTION
+        通过git remote命令检查是否存在origin配置
+    #>
     $remotes = git remote
     return $remotes -contains "origin"
 }
 
 # 函数：初始化Git仓库
 function Initialize-GitRepository {
+    <#
+    .SYNOPSIS
+        初始化Git仓库并配置远程仓库
+    .DESCRIPTION
+        执行git init和git remote add origin操作
+    #>
     Write-Host "检测到这是首次设置，开始初始化Git仓库..." -ForegroundColor Yellow
     
     # 初始化Git仓库
@@ -35,8 +54,63 @@ function Initialize-GitRepository {
     Write-Host "Git仓库初始化完成！" -ForegroundColor Green
 }
 
+# 函数：带超时的远程分支查询
+function Get-RemoteBranchesWithTimeout {
+    <#
+    .SYNOPSIS
+        带超时控制的远程分支查询函数
+    .DESCRIPTION
+        使用PowerShell作业实现超时控制，避免git ls-remote命令卡死
+    .PARAMETER TimeoutSeconds
+        超时时间（秒），默认15秒
+    #>
+    param(
+        [int]$TimeoutSeconds = 15
+    )
+    
+    try {
+        Write-Host "查询远程分支..." -ForegroundColor Green
+        
+        # 使用Start-Job实现超时控制
+        $job = Start-Job -ScriptBlock {
+            git ls-remote --heads origin 2>&1
+        }
+        
+        # 等待作业完成或超时
+        $completed = Wait-Job -Job $job -Timeout $TimeoutSeconds
+        
+        if ($completed) {
+            $result = Receive-Job -Job $job
+            Remove-Job -Job $job
+            
+            if ($LASTEXITCODE -eq 0) {
+                Write-Host $result
+                return $true
+            } else {
+                Write-Host "远程分支查询失败: $result" -ForegroundColor Red
+                return $false
+            }
+        } else {
+            Stop-Job -Job $job
+            Remove-Job -Job $job
+            Write-Host "远程分支查询超时（${TimeoutSeconds}秒）" -ForegroundColor Red
+            Write-Host "可能的原因：网络连接问题、远程仓库认证失败或地址错误" -ForegroundColor Yellow
+            return $false
+        }
+    } catch {
+        Write-Host "远程分支查询出错: $($_.Exception.Message)" -ForegroundColor Red
+        return $false
+    }
+}
+
 # 函数：执行提交和推送操作
 function Invoke-GitCommitAndPush {
+    <#
+    .SYNOPSIS
+        执行Git提交和推送操作
+    .DESCRIPTION
+        添加文件、提交更改、查询远程分支并推送到指定分支
+    #>
     # 添加修改的文件
     Write-Host "添加修改的文件..." -ForegroundColor Green
     git add .
@@ -62,9 +136,14 @@ function Invoke-GitCommitAndPush {
     Write-Host "提交更改..." -ForegroundColor Green
     git commit -m "$commitMessage"
     
-    # 显示远程分支并让用户选择
-    Write-Host "查询远程分支..." -ForegroundColor Green
-    git ls-remote --heads origin
+    # 尝试查询远程分支（带超时）
+    $remoteBranchSuccess = Get-RemoteBranchesWithTimeout -TimeoutSeconds 15
+    
+    if (-not $remoteBranchSuccess) {
+        Write-Host "`n无法查询远程分支，将使用默认选项" -ForegroundColor Yellow
+        Write-Host "建议检查网络连接和远程仓库配置" -ForegroundColor Yellow
+        Write-Host "可以使用命令检查：git remote -v" -ForegroundColor Yellow
+    }
     
     Write-Host "`n请选择要推送的分支:" -ForegroundColor Yellow
     Write-Host "1. main"
