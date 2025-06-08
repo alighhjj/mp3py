@@ -47,8 +47,8 @@ document.addEventListener('DOMContentLoaded', () => {
         // 更新播放器顶部的歌曲信息
         document.querySelector('.app-title').innerHTML = `<i class="fas fa-music"></i> ${song.title}`;
         // 更新 album-info 区域的歌曲标题和艺术家
-        document.querySelector('.album-info h2').textContent = song.title;
-        document.querySelector('.album-info p').textContent = `by ${song.artist}`;
+        document.querySelector('.album-info .song-title-display').textContent = song.title;
+        document.querySelector('.album-info .artist-display').textContent = `by ${song.artist}`;
     }
 
     // 播放/暂停功能

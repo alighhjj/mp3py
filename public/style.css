@@ -116,6 +116,10 @@ main {
     font-size: 14px;
 }
 
+.album-info .song-title-display {
+    font-weight: bold;
+}
+
 .info-details {
     width: 100%;
     margin-bottom: 20px;
